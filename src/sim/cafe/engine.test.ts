@@ -31,6 +31,23 @@ describe("schedule", () => {
     expect(left.reduce((sum, party) => sum + party.members.length, 0)).toBe(24);
   });
 
+  it("keeps the headcount and varies how fast parties arrive", () => {
+    const parties = buildSchedule(
+      config({ customerCount: 40, duration: 600, seed: 7, groupRatio: 0 }),
+      mulberry32(7),
+    );
+    expect(parties.reduce((sum, party) => sum + party.members.length, 0)).toBe(40);
+    const times = parties.map((party) => party.arrivalTime);
+    const gaps = times.slice(1).map((time, index) => time - times[index]);
+    const minGap = Math.min(...gaps);
+    const maxGap = Math.max(...gaps);
+    expect(minGap).toBeLessThan(3);
+    expect(maxGap).toBeGreaterThan(minGap * 4);
+    for (let index = 1; index < times.length; index += 1) {
+      expect(times[index]).toBeGreaterThanOrEqual(times[index - 1]);
+    }
+  });
+
   it("changes age mix without moving arrival times", () => {
     const young = buildSchedule(config({ ageWeights: YOUNG_AGES, seed: 8, customerCount: 30 }), mulberry32(8));
     const older = buildSchedule(config({ ageWeights: OLDER_AGES, seed: 8, customerCount: 30 }), mulberry32(8));

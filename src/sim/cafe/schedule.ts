@@ -27,6 +27,50 @@ function createMember(config: SimConfig, rng: Rng): MemberBlueprint {
 }
 
 /**
+ * How many parties walk in together.
+ * Most arrivals are one party. A few are a small rush, up to six.
+ */
+function sampleBatchSize(remaining: number, rng: Rng): number {
+  const roll = rng.next();
+  const size = roll < 0.42 ? 1 : roll < 0.72 ? 2 : roll < 0.88 ? 3 : roll < 0.96 ? 4 : 6;
+  return Math.min(remaining, size);
+}
+
+/**
+ * Arrival clock for a fixed headcount.
+ * Parties share a burst, then the next burst waits a short or long gap.
+ * If the day runs long, times shrink to fit. Quiet stretches stay quiet.
+ */
+function arrivalTimes(count: number, duration: number, rng: Rng): number[] {
+  if (count <= 0) return [];
+  const limit = duration * 0.9;
+  const times: number[] = [];
+  let cursor = 0;
+  let left = count;
+
+  while (left > 0) {
+    const batch = sampleBatchSize(left, rng);
+    let stagger = 0;
+    for (let index = 0; index < batch; index += 1) {
+      if (index > 0) stagger += 0.35 + rng.next() * 0.9;
+      times.push(cursor + stagger);
+    }
+    cursor += stagger;
+    left -= batch;
+    if (left === 0) break;
+    const quiet = rng.next();
+    cursor += quiet < 0.62 ? 2 + rng.next() * 7 : 14 + rng.next() * 40;
+  }
+
+  const last = times[times.length - 1] ?? 0;
+  if (last > limit) {
+    const scale = limit / last;
+    return times.map((time) => time * scale);
+  }
+  return times;
+}
+
+/**
  * Builds the arrival list before the store opens.
  * Kiosk count is intentionally unused so two runs that share a seed
  * compare the same people under different equipment.
@@ -52,8 +96,7 @@ export function buildSchedule(config: SimConfig, rng: Rng): PartyBlueprint[] {
     remaining -= size;
   }
 
-  const times = sizes.map(() => rng.next() * normalized.duration * 0.9);
-  times.sort((a, b) => a - b);
+  const times = arrivalTimes(sizes.length, normalized.duration, rng);
 
   return sizes.map((size, index) => {
     const members = Array.from({ length: size }, () => createMember(normalized, rng));
